@@ -1,8 +1,10 @@
 #include <SFML/Graphics.hpp>
 
+const unsigned int TEXTURE_SIZE = 256;
+
 int main(int argc, char *argv[])
 {
-  sf::RenderWindow window(sf::VideoMode(800, 600), "3D Worley Noise");
+  sf::RenderWindow window(sf::VideoMode(TEXTURE_SIZE, TEXTURE_SIZE), "3D Worley Noise");
 
   while (window.isOpen())
   {
@@ -16,6 +18,7 @@ int main(int argc, char *argv[])
     }
 
     window.clear();
+
     window.display();
   }
 
