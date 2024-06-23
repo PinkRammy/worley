@@ -1,1 +1,6 @@
 build/
+
+ext/imgui/*/
+ext/imgui/.editorconfig
+ext/imgui/.gitattributes
+ext/imgui/.gitignore
