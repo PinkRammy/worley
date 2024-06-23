@@ -1,3 +1,0 @@
-/home/rammy/git/worley/build/CMakeFiles/TileableWorleyGen.dir
-/home/rammy/git/worley/build/CMakeFiles/edit_cache.dir
-/home/rammy/git/worley/build/CMakeFiles/rebuild_cache.dir
