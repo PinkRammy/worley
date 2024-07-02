@@ -1,25 +1,36 @@
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <mutex>
 #include <random>
+#include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include <SFML/Graphics.hpp>
 
-const unsigned int TEXTURE_SIZE = 512;
-const unsigned int WORLEY_POINTS = 20;
-const unsigned int CHANNELS = 4;
+const unsigned int SPRITESHEET_SIZE = 512;
+const unsigned int TEXTURE_SLICES = 64;
+const unsigned int TEXTURE_SLICE_ROW = sqrt(TEXTURE_SLICES);
+const unsigned int TEXTURE_SIZE = SPRITESHEET_SIZE / TEXTURE_SLICE_ROW;
+const unsigned int TILED_TEXTURE_SIZE = TEXTURE_SIZE * 3;
+const unsigned int WORLEY_POINTS = 9;
+const unsigned int TEXTURE_PIXELS = TEXTURE_SIZE * TEXTURE_SIZE;
+
+std::unordered_map<int, std::vector<sf::Uint8>> worleyTiles;
+std::mutex _MUTEX;
 
 struct Point
 {
     int x;
     int y;
 
-    int distanceTo(Point other)
+    double distanceTo(const Point &other) const
     {
-        int x = other.x - this->x;
-        int y = other.y - this->y;
-        return sqrt(x * x + y * y);
+        return std::sqrt(std::pow(x - other.x, 2) + std::pow(y - other.y, 2));
     }
 };
 
@@ -28,106 +39,137 @@ int remap(int value, int min, int max, int newMin, int newMax)
     return newMin + (value - min) * (newMax - newMin) / (max - min);
 }
 
-sf::Uint8 *generateWorleyNoise(std::mt19937 &rand)
+std::vector<sf::Uint8> generateTiledWorleyNoise(std::random_device &randomDevice)
 {
+    // generate random seed
+    std::mt19937 rand(randomDevice());
+
     // generate points
-    Point worleyPoint;
-    Point worleyPoints[WORLEY_POINTS];
-    std::uniform_int_distribution<int> d(0, TEXTURE_SIZE);
+    std::vector<Point> worleyPoints;
+    std::uniform_int_distribution<int> d(0, TEXTURE_SIZE - 1);
     for (int i = 0; i < WORLEY_POINTS; i++)
     {
-        worleyPoint.x = d(rand);
-        worleyPoint.y = d(rand);
-        worleyPoints[i] = worleyPoint;
+        Point worleyPoint{d(rand), d(rand)};
+        worleyPoints.push_back(worleyPoint);
     }
 
-    // generate tiled points
-    const unsigned int tiledWorleyPointsCount = WORLEY_POINTS * 9;
-    Point tiledWorleyPoints[tiledWorleyPointsCount];
+    // tile the points
+    const unsigned int TILED_WORLEY_POINTS = WORLEY_POINTS * 9;
+    std::vector<Point> tiledWorleyPoints;
+    unsigned int worleyTile;
     for (int y = 0; y < 3; y++)
     {
         for (int x = 0; x < 3; x++)
         {
-            int index = (y * 3 + x) * WORLEY_POINTS;
+            worleyTile = y * 3 + x;
             for (int i = 0; i < WORLEY_POINTS; i++)
             {
-                worleyPoint = worleyPoints[i];
+                Point worleyPoint = worleyPoints.at(i);
                 worleyPoint.x += x * TEXTURE_SIZE;
                 worleyPoint.y += y * TEXTURE_SIZE;
-                tiledWorleyPoints[i + index] = worleyPoint;
+                tiledWorleyPoints.push_back(worleyPoint);
             }
         }
     }
 
-    // get worley noise pixels
-    int index, color, x, y;
-    Point current, worley;
-
-    const unsigned int tiledTextureSize = TEXTURE_SIZE * 3;
-    const unsigned int pixelCount = tiledTextureSize * tiledTextureSize * CHANNELS;
-    sf::Uint8 *result = new sf::Uint8[pixelCount];
-    for (int i = 0; i < pixelCount; i += CHANNELS)
+    // generate the tiled texture
+    const unsigned int TILED_TEXTURE_PIXELS = TILED_TEXTURE_SIZE * TILED_TEXTURE_SIZE * 4;
+    std::vector<sf::Uint8> tiledPixels(TILED_TEXTURE_PIXELS);
+    unsigned int color, index;
+    for (int y = 0; y < TILED_TEXTURE_SIZE; y++)
     {
-        // get current coordinates
-        index = i / 4;
-        current.x = index % tiledTextureSize;
-        current.y = floor(index / tiledTextureSize);
-
-        // get closest worley point distance
-        std::vector<int> distances = std::vector<int>();
-        for (int i = 0; i < tiledWorleyPointsCount; i++)
+        for (int x = 0; x < TILED_TEXTURE_SIZE; x++)
         {
-            worleyPoint = tiledWorleyPoints[i];
-            distances.push_back(current.distanceTo(worleyPoint));
+            // get current pixel coordinates
+            Point current{x, y};
+
+            // get closest worley point distance
+            std::vector<int> distances = std::vector<int>();
+            for (int i = 0; i < TILED_WORLEY_POINTS; i++)
+            {
+                distances.push_back(current.distanceTo(tiledWorleyPoints[i]));
+            }
+            std::sort(distances.begin(), distances.end());
+            color = std::min(distances[0], 255);
+            color = 255 - std::min(remap(color, 0, 255, 64, 512), 255); // remap for pretty
+
+            // set the pixel value
+            index = (y * TILED_TEXTURE_SIZE + x) * 4;
+            tiledPixels[index + 0] = color;
+            tiledPixels[index + 1] = color;
+            tiledPixels[index + 2] = color;
+            tiledPixels[index + 3] = 255;
         }
-        std::sort(distances.begin(), distances.end());
-        color = std::min(distances[0], 255);
-
-        // remap for pretty
-        color = 255 - std::min(remap(color, 0, 255, 0, 512), 255);
-
-        // assign the channel colors
-        result[i + 0] = color; // red
-        result[i + 1] = color; // green
-        result[i + 2] = color; // blue
-        result[i + 3] = 255;   // alpha
     }
 
-    return result;
+    return tiledPixels;
 }
 
-sf::Uint8* generatePerlinNoise(std::mt19937 &rand)
+void generateWorleyNoiseSlices(int index, int count, std::random_device &randomDevice)
 {
-    sf::Uint8 *result = new sf::Uint8[0];
-    return result;
+    for (int i = index; i < index + count; i++)
+    {
+        std::lock_guard<std::mutex> lock(_MUTEX);
+        worleyTiles[i] = generateTiledWorleyNoise(randomDevice);
+    }
+}
+
+std::vector<sf::Uint8> getWorleyNoiseSlice(int index)
+{
+    std::lock_guard<std::mutex> lock(_MUTEX);
+    auto slicesIt = worleyTiles.find(index);
+    if (slicesIt != worleyTiles.end())
+    {
+        return slicesIt->second;
+    }
+
+    return {};
 }
 
 int main(int argc, char *argv[])
 {
     // initialize random engine
     std::random_device randomDevice;
-    std::mt19937 mt19937(randomDevice());
 
     // create noises
-    std::cout << "Generating Worley noise" << std::endl;
-    sf::Texture worleyNoise;
-    worleyNoise.create(TEXTURE_SIZE * 3, TEXTURE_SIZE * 3);
-    worleyNoise.update(generateWorleyNoise(mt19937));
+    const unsigned int numThreads = std::min(std::thread::hardware_concurrency(), TEXTURE_SLICES);
+    unsigned int slicesPerThread = TEXTURE_SLICES / numThreads;
+    std::cout << "Using " << numThreads << " threads to generate " << TEXTURE_SLICES << " noises" << std::endl;
+    std::vector<std::thread> threads;
+    for (int i = 0; i < numThreads; i++)
+    {
+        int threadSliceIndex = i * slicesPerThread;
+        int threadSlices = (i == numThreads - 1) ? TEXTURE_SLICES - threadSliceIndex : slicesPerThread;
+        threads.emplace_back(generateWorleyNoiseSlices, threadSliceIndex, threadSlices, std::ref(randomDevice));
+    }
+    for (std::thread &thread : threads)
+    {
+        if (thread.joinable())
+        {
+            thread.join();
+        }
+    }
 
-    sf::Sprite worleySprite;
-    worleySprite.setTexture(worleyNoise);
-    worleySprite.setTextureRect(sf::IntRect(TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE));
+    std::cout << "Generating spritesheet" << std::endl;
+    std::vector<std::string> spritesheet;
+    sf::IntRect spritesheetRect(TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE);
+    const unsigned int TILED_TEXTURE_PIXELS = TILED_TEXTURE_SIZE * TILED_TEXTURE_SIZE * 4;
+    for (int i = 0; i < TEXTURE_SLICES; i++)
+    {
+        std::vector<sf::Uint8> slicePixels = getWorleyNoiseSlice(i);
+        if (slicePixels.empty())
+        {
+            std::cout << "\tError: Slice #" << i << " is empty.";
+            return -1;
+        }
 
-    // std::cout << "Generating Perlin noise" << std::endl;
-    // sf::Texture perlinNoise;
-    // perlinNoise.create(TEXTURE_SIZE, TEXTURE_SIZE);
-    // perlinNoise.update(generatePerlinNoise(mt19937));
-
-    // sf::Sprite perlinSprite;
-    // perlinSprite.setTexture(perlinNoise);
+        std::string filename = "worleySlice_" + std::to_string(i) + ".bmp";
+        stbi_write_bmp(filename.c_str(), TILED_TEXTURE_SIZE, TILED_TEXTURE_SIZE, 4, slicePixels.data());
+        spritesheet.push_back(filename);
+    }
 
     std::cout << "Initializing window" << std::endl;
-    sf::RenderWindow window(sf::VideoMode(TEXTURE_SIZE, TEXTURE_SIZE), "Perlin-Worley Noise");
+    sf::RenderWindow window(sf::VideoMode(SPRITESHEET_SIZE, SPRITESHEET_SIZE), "Perlin-Worley Noise");
     while (window.isOpen())
     {
         sf::Event event;
@@ -135,12 +177,29 @@ int main(int argc, char *argv[])
         {
             if (event.type == sf::Event::Closed)
             {
+                sf::Texture tex;
+                tex.create(SPRITESHEET_SIZE, SPRITESHEET_SIZE);
+                tex.update(window);
+                tex.copyToImage().saveToFile("worleySpritesheet.png");
+
                 window.close();
             }
         }
 
         window.clear();
-        window.draw(worleySprite);
+
+        float sliceX, sliceY;
+        for (int i = 0; i < TEXTURE_SLICES; i++)
+        {
+            sf::Texture worleySliceTexture;
+            worleySliceTexture.loadFromFile(spritesheet.at(i));
+            sf::Sprite worleySlice(worleySliceTexture, spritesheetRect);
+            sliceX = i % TEXTURE_SLICE_ROW;
+            sliceY = std::floor(i / TEXTURE_SLICE_ROW);
+            worleySlice.move(sliceX * TEXTURE_SIZE, sliceY * TEXTURE_SIZE);
+            window.draw(worleySlice);
+        }
+
         window.display();
     }
 
