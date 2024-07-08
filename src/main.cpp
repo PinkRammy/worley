@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <iostream>
 #include <mutex>
 #include <random>
@@ -91,7 +92,7 @@ std::vector<sf::Uint8> generateTiledWorleyNoise(std::random_device &randomDevice
             }
             std::sort(distances.begin(), distances.end());
             color = std::min(distances[0], 255);
-            color = 255 - std::min(remap(color, 0, 255, 64, 512), 255); // remap for pretty
+            color = 255 - std::min(remap(color, 0, 255, 0, 1024), 128); // remap for pretty
 
             // set the pixel value
             index = (y * TILED_TEXTURE_SIZE + x) * 4;
@@ -131,7 +132,58 @@ int main(int argc, char *argv[])
     // initialize random engine
     std::random_device randomDevice;
 
-    // create noises
+    // check if we just preview
+    bool preview = false;
+    if (argc > 1)
+    {
+        std::string arg(argv[1]);
+        preview = arg == "--preview";
+    }
+
+    // generate the preview
+    if (preview)
+    {
+        std::cout << "Generating preview" << std::endl;
+        std::vector<sf::Uint8> worleyNoise = generateTiledWorleyNoise(randomDevice);
+        
+        sf::Texture texture;
+        texture.create(TILED_TEXTURE_SIZE, TILED_TEXTURE_SIZE);
+        texture.update(worleyNoise.data());
+
+        const unsigned int PREVIEW_SCALE = 4;
+        const unsigned int PREVIEW_SIZE = TEXTURE_SIZE * PREVIEW_SCALE;
+        sf::IntRect previewRect(TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE);
+        sf::Sprite preview(texture, previewRect);
+        preview.setScale(PREVIEW_SCALE, PREVIEW_SCALE);
+
+        std::cout << "Initializing window" << std::endl;
+        sf::RenderWindow window(sf::VideoMode(PREVIEW_SIZE, PREVIEW_SIZE), "Tileable Worley Noise (Preview)");
+        while(window.isOpen())
+        {
+            sf::Event event;
+            while (window.pollEvent(event))
+            {
+                if (event.type == sf::Event::Closed)
+                {
+                    window.close();
+                }
+
+                if (event.type == sf::Event::KeyReleased && event.key.code == sf::Keyboard::Enter)
+                {
+                    worleyNoise = generateTiledWorleyNoise(randomDevice);
+                    texture.update(worleyNoise.data());
+                    preview.setTexture(texture);
+                }
+            }
+
+            window.draw(preview);
+            window.display();
+        }
+
+        return 0;
+    }
+
+    // create the noise spritesheet
     const unsigned int numThreads = std::min(std::thread::hardware_concurrency(), TEXTURE_SLICES);
     unsigned int slicesPerThread = TEXTURE_SLICES / numThreads;
     std::cout << "Using " << numThreads << " threads to generate " << TEXTURE_SLICES << " noises" << std::endl;
@@ -169,7 +221,7 @@ int main(int argc, char *argv[])
     }
 
     std::cout << "Initializing window" << std::endl;
-    sf::RenderWindow window(sf::VideoMode(SPRITESHEET_SIZE, SPRITESHEET_SIZE), "Perlin-Worley Noise");
+    sf::RenderWindow window(sf::VideoMode(SPRITESHEET_SIZE, SPRITESHEET_SIZE), "Tileable Worley Noise");
     while (window.isOpen())
     {
         sf::Event event;
@@ -192,7 +244,7 @@ int main(int argc, char *argv[])
         for (int i = 0; i < TEXTURE_SLICES; i++)
         {
             sf::Texture worleySliceTexture;
-            worleySliceTexture.loadFromFile(spritesheet.at(i));
+            worleySliceTexture.loadFromFile(spritesheet.at(i)); // lets assume this always works :D
             sf::Sprite worleySlice(worleySliceTexture, spritesheetRect);
             sliceX = i % TEXTURE_SLICE_ROW;
             sliceY = std::floor(i / TEXTURE_SLICE_ROW);
@@ -201,6 +253,12 @@ int main(int argc, char *argv[])
         }
 
         window.display();
+    }
+
+    std::cout << "Cleaning up" << std::endl;
+    for(auto it = spritesheet.begin(); it != spritesheet.end(); it++)
+    {
+        std::remove(it->data());
     }
 
     return 0;
