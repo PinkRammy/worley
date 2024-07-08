@@ -92,7 +92,7 @@ std::vector<sf::Uint8> generateTiledWorleyNoise(std::random_device &randomDevice
             }
             std::sort(distances.begin(), distances.end());
             color = std::min(distances[0], 255);
-            color = 255 - std::min(remap(color, 0, 255, 0, 1024), 128); // remap for pretty
+            color = 255 - std::min(remap(color, 0, 255, 0, 1024), 255); // remap for pretty
 
             // set the pixel value
             index = (y * TILED_TEXTURE_SIZE + x) * 4;
