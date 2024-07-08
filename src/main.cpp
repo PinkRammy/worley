@@ -18,7 +18,7 @@ const unsigned int TEXTURE_SLICES = 64;
 const unsigned int TEXTURE_SLICE_ROW = sqrt(TEXTURE_SLICES);
 const unsigned int TEXTURE_SIZE = SPRITESHEET_SIZE / TEXTURE_SLICE_ROW;
 const unsigned int TILED_TEXTURE_SIZE = TEXTURE_SIZE * 3;
-const unsigned int WORLEY_POINTS = 9;
+const unsigned int WORLEY_POINTS = 23;
 const unsigned int TEXTURE_PIXELS = TEXTURE_SIZE * TEXTURE_SIZE;
 
 std::unordered_map<int, std::vector<sf::Uint8>> worleyTiles;
@@ -92,7 +92,7 @@ std::vector<sf::Uint8> generateTiledWorleyNoise(std::random_device &randomDevice
             }
             std::sort(distances.begin(), distances.end());
             color = std::min(distances[0], 255);
-            color = 255 - std::min(remap(color, 0, 255, 0, 1024), 255); // remap for pretty
+            color = 255 - std::min(remap(color, 0, 255, 0, 2048), 255); // remap for pretty
 
             // set the pixel value
             index = (y * TILED_TEXTURE_SIZE + x) * 4;
