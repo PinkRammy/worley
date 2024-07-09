@@ -18,7 +18,7 @@ const unsigned int TEXTURE_SLICES = 64;
 const unsigned int TEXTURE_SLICE_ROW = sqrt(TEXTURE_SLICES);
 const unsigned int TEXTURE_SIZE = SPRITESHEET_SIZE / TEXTURE_SLICE_ROW;
 const unsigned int TILED_TEXTURE_SIZE = TEXTURE_SIZE * 3;
-const unsigned int WORLEY_POINTS = 23;
+const unsigned int WORLEY_POINTS = 13;
 const unsigned int TEXTURE_PIXELS = TEXTURE_SIZE * TEXTURE_SIZE;
 
 std::unordered_map<int, std::vector<sf::Uint8>> worleyTiles;
