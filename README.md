@@ -3,6 +3,14 @@ Example of a 32 x 32 x 16 spritesheet (*16 tiles of 32px x 32px tileable worley 
 <center><img src="img/demo.png" /></center>
 </br>
 
+# 👷‍♀️ TODO:
+- [x] Worley generation
+- [ ] Perlin generation
+- [ ] Perlin-Worley generation
+- [ ] RGB generation
+- [ ] Custom spritesheet size
+- [ ] Custom tile size
+
 ## 💖 Credits
 Using the [stb_image_write](https://github.com/nothings/stb/blob/master/stb_image_write.h) header file from https://github.com/nothings/stb/
 
